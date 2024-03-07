@@ -1,0 +1,137 @@
+---
+title: "Health Insurance Machine Learning Analysis"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-03-07"
+---
+
+Machine Learning Analysis on individuals’ health insurance charges in the US. The data includes both categorical and numeric measures. I will be providing a thorough regression analysis attempting to predict the ‘charges’ variable using the remainder of the predictors in the data set. Which model is most likely to provide the lowest MSE in the long-run? Which model would I choose if I was consulting with an insurance company on this data set?
+
+```{r}
+insurance <- read.csv("insurance.csv", stringsAsFactors=TRUE)
+head(insurance)
+```
+# Linear Model:
+```{r}
+is.index <- sample(1:nrow(insurance), 0.7 * nrow(insurance))
+is.train <- insurance[is.index, ]
+is.test <- insurance[-is.index, ]
+```
+
+```{r}
+train.insurance.lm <- lm(charges~., data = is.train)
+test.insurance.lm <- lm(charges~., data = is.test)
+
+train.predictions <- predict(train.insurance.lm, newdata = is.train)
+
+train.residuals <- is.train$charges - train.predictions
+
+train.mse <- mean(train.residuals^2)
+
+test.predictions <- predict(test.insurance.lm, newdata = is.test)
+
+test.residuals <- is.test$charges - test.predictions
+
+test.mse <- mean(test.residuals^2)
+
+# Display MSE for training and test sets
+cat("Training MSE:", train.mse, "\n")
+cat("Test MSE:", test.mse, "\n")
+```
+
+# Trees:
+```{r}
+library(tree)
+insurance_tree <- tree(charges~., data=is.train)
+plot(insurance_tree)
+text(insurance_tree, pretty=0)
+```
+```{r}
+summary(insurance_tree)
+```
+Residual mean deviance = 19830000
+
+```{r}
+cv.insurance_tree <- cv.tree(insurance_tree, K = 10)
+plot(cv.insurance_tree, type="b")
+```
+Pruning is not necessary
+
+```{r}
+training_tree_MSE <- min(cv.insurance_tree$dev)/nrow(insurance)
+cat("The Training MSE is", training_tree_MSE)
+```
+
+```{r}
+test_predict <- predict(insurance_tree, newdata = is.test)
+test_MSE <- mean((is.test$charges - test_predict)^2)
+cat( "The Testing MSE is", test_MSE)
+```
+
+# Random Forest
+
+```{r}
+library("randomForest")
+insurance_forest <- randomForest(charges~., data=is.train, mtry=4, importance=TRUE)
+print(insurance_forest)
+```
+
+```{r}
+varImpPlot(insurance_forest)
+```
+
+```{r}
+insurance_forest_train_MSE <- insurance_forest$mse[500]
+cat("The training MSE is", insurance_forest_train_MSE)
+```
+
+```{r}
+insurance_forest_predict <- predict(insurance_forest, newdata = is.test)
+insurance_test_MSE <- mean((is.test$charges - insurance_forest_predict)^2)
+cat("The testing MSE is", insurance_test_MSE)
+```
+
+# Lasso
+```{r}
+library(glmnet)
+x <- data.matrix(is.train[,c('age', 'sex', 'bmi', 'children', 'smoker', 'region')])
+y <- is.train$charges
+insurance_lasso <- cv.glmnet(x, y, alpha=1)
+plot(insurance_lasso$glmnet.fit, label=TRUE, xvar="lambda")
+plot(insurance_lasso)
+```
+```{r}
+lambda_value <- insurance_lasso$lambda.min
+lambda_value
+```
+
+```{r}
+library(glmnet)
+
+lasso_prediction <- predict(insurance_lasso, s="lambda.min", newx=data.matrix(is.test[,c('age', 'sex', 'bmi', 'children', 'smoker', 'region')]))
+
+lasso_MSE <- mean((lasso_prediction - is.test$charges)^2)
+lasso_MSE
+```
+
+# Boosting
+
+```{r}
+library(gbm)
+insurance_boosting <- gbm(charges ~ ., data = is.train, distribution = "gaussian", n.trees = 5000, cv.folds = 10, shrinkage = 0.1, interaction.depth = 2)
+insurance_boosting
+```
+
+```{r}
+insurance_boosting_predictions <- predict(insurance_boosting, newdata = is.test)
+```
+
+```{r}
+boosting_MSE <- mean((is.test$charges - insurance_boosting_predictions)^2)
+cat("The testing MSE is", boosting_MSE)
+```
+
+Explanation:
+
+The lowest testing MSE is given by the Boosting model. This is the best model and it will provide the lowest MSE in the long run. The decision tree is the best model to choose if consulting with an insurance company because its the most simple one and the easiest to explain however its not the most reliable model. 
